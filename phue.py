@@ -321,6 +321,33 @@ class SensorConfig(dict):
         self._bridge.set_sensor_config(self._sensor_id, self)
 
 
+class Rule(object):
+    def __init__(self, bridge, rule_id):
+        self.bridge = bridge
+        self.rule_id = rule_id
+
+        self._name = None
+
+    def _get(self, *args, **kwargs):
+        return self.bridge.get_rule(self.rule_id, *args, **kwargs)
+
+    def __repr__(self):
+        return '<{0}.{1} object "{2}" at {3} id={4}>'.format(
+            self.__class__.__module__,
+            self.__class__.__name__,
+            self.name,
+            hex(id(self)),
+            self.rule_id)
+
+    @property
+    def name(self):
+        '''Get or set the name of the sensor [string]'''
+        if PY3K:
+            self._name = self._get('name')
+        else:
+            self._name = self._get('name').encode('utf-8')
+        return self._name
+
 class Sensor(object):
 
     """ Hue Sensor object
@@ -621,6 +648,7 @@ class Bridge(object):
         self.lights_by_name = {}
         self.sensors_by_id = {}
         self.sensors_by_name = {}
+        self.rules_by_id = {}
         self._name = None
 
         # self.minutes = 600 # these do not seem to be used anywhere?
@@ -809,6 +837,40 @@ class Bridge(object):
             return self.sensors_by_name
         if mode == 'list':
             return self.sensors_by_id.values()
+
+    def get_rule_objects(self, mode='list'):
+        rules = self.request('GET', '/api/' + self.username + '/rules/')
+
+        for rule in rules:
+            self.rules_by_id[int(rule)] = Rule(self, int(rule))
+
+        return self.rules_by_id.values()
+
+    def get_rule(self, rule_id, parameter=None):
+        rule = self.request('GET', '/api/' + self.username + '/rules/' + str(rule_id))
+
+        if parameter is None:
+            return rule
+
+        return rule[parameter]
+
+    def set_rule(self, rule_id, parameter, value=None):
+        if isinstance(parameter, dict):
+            data = parameter
+        else:
+            data = {parameter: value}
+
+        result = None
+        logger.debug(str(data))
+        result = self.request('PUT', '/api/' + self.username + '/rules/' + str(
+            rule_id), data)
+        if 'error' in list(result[0].keys()):
+            logger.warn("ERROR: {0} for rule {1}".format(
+                result[0]['error']['description'], rule_id))
+
+        logger.debug(result)
+        return result
+
 
     def __getitem__(self, key):
         """ Lights are accessibly by indexing the bridge either with
